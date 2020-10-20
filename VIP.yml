@@ -1,0 +1,73 @@
+  
+ # Command to run playbook... Pass username, f5 name, password while executuing
+ # ansible-playbook vs.yml -e  "user=f5admin" -e "LB=10.1.0.100" -e "pass=password"
+ # Create a csv file with ip,vipname, poolname, lbmethod etc
+---
+- name: BIG-IP SETUP
+  hosts: f5
+  connection: local
+  gather_facts: false
+
+  tasks:
+  - name: "Reading vip information"
+    read_csv:
+      path: vip.csv
+    register: vip
+  - name: CREATE POOL
+    bigip_pool:
+      provider:
+          server: "{{LB}}"
+          user: "{{user}}"
+          password: "{{pass}}"
+          server_port: 8443
+          validate_certs: false
+      name: "{{node.poolname}}"
+      lb_method: "{{node.lbmethod}}"
+      monitors: "{{node.monitor}}"
+      monitor_type: "and_list"
+      description: "{{node.description}}"
+    run_once: true
+    loop: "{{ vip.list }}"
+    loop_control:
+      loop_var: node
+      
+      
+  - name: ADD POOL MEMBERS
+    bigip_pool_member:
+      provider:
+          server: "{{LB}}"
+          user: "{{user}}"
+          password: "{{pass}}"
+          server_port: 8443
+          validate_certs: false
+      state: "present"
+      name: "{{node.name}}"
+      host: "{{node.ip}}"
+      port: "{{node.port}}"
+      pool: "{{node.poolname}}"  
+      
+    loop: "{{ vip.list }}"
+    loop_control:
+      loop_var: node
+
+  - name: ADD VIRTUAL SERVER
+    bigip_virtual_server:
+      provider:
+          server: "{{LB}}"
+          user: "{{user}}"
+          password: "{{pass}}"
+          server_port: 8443
+          validate_certs: false
+      name: "{{node.vipname}}"
+      description: "{{node.description}}"
+      default_persistence_profile: "{{node.persistence}}"
+      destination: "{{node.vip}}"
+      port: "{{node.vipport}}"
+      enabled_vlans: "all"
+      pool: "{{node.poolname}}"
+      snat: "SNAT-1"
+      
+    run_once: true   
+    loop: "{{ vip.list }}"
+    loop_control:
+      loop_var: node
